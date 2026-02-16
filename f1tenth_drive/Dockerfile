@@ -11,10 +11,13 @@ RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=private \
         libboost-all-dev \
         clang-15 \
         clangd-15 \
+        libomp-15-dev \
         ninja-build \
         ccache \
         libjsoncpp-dev \
         libgfortran5 \
+        libceres-dev \
+        ros-humble-grid-map \
         valgrind \
         openssh-server && \
     apt-get -y dist-upgrade
@@ -54,8 +57,8 @@ COPY . .
 RUN --mount=type=cache,target=/root/.cache uv pip install transforms3d cython==0.29.37 numba torch
 
 # range_libc
-RUN cd /ros_ws/lib/range_libc/pywrapper && \
-    uv pip install . --no-build-isolation
+# RUN cd /ros_ws/lib/range_libc/pywrapper && \
+#     uv pip install . --no-build-isolation
 
 # if libgfortran.so.5 exists, symlink it
 RUN if [ -f /usr/lib/aarch64-linux-gnu/libgfortran.so.5 ]; then \
@@ -65,7 +68,7 @@ RUN if [ -f /usr/lib/aarch64-linux-gnu/libgfortran.so.5 ]; then \
 # Add workspace to bashrc
 RUN echo "export LD_LIBRARY_PATH=/ros_ws/lib/libtorch/lib/:\$LD_LIBRARY_PATH" >> /root/.bashrc
 
-RUN echo "export FASTRTPS_DEFAULT_PROFILES_FILE=discovery_settings.xml" >> /root/.bashrc
+RUN echo "export FASTRTPS_DEFAULT_PROFILES_FILE=client.xml" >> /root/.bashrc
 
 
 # The entrypoint script will build, source, and then execute the CMD

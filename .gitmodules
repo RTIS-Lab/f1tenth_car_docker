@@ -19,3 +19,4 @@
 [submodule "f1tenth_system/src/f1tenth_system"]
 	path = f1tenth_system/src/f1tenth_system
 	url = https://github.com/RTIS-Lab/f1tenth_system.git
+	branch = humble-devel

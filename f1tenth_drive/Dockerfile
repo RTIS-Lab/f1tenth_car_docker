@@ -19,15 +19,13 @@ RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=private \
         libceres-dev \
         ros-humble-grid-map \
         valgrind \
-        openssh-server && \
-    apt-get -y dist-upgrade
+    && apt-get -y dist-upgrade
 
 # SSH server setup
 RUN mkdir -p /var/run/sshd && \
     echo 'root:password' | chpasswd && \
     sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config && \
-    sed -i 's@session\s*required\s*pam_loginuid.so@session optional pam_loginuid.so@g' /etc/pam.d/sshd && \
-    sed -i 's/^#?Port\s+22/Port 2222/' /etc/ssh/sshd_config
+    sed -i 's@session\s*required\s*pam_loginuid.so@session optional pam_loginuid.so@g' /etc/pam.d/sshd
 
 # clang setup
 RUN update-alternatives --install /usr/bin/clang clang /usr/bin/clang-15 15 && \
@@ -67,8 +65,6 @@ RUN if [ -f /usr/lib/aarch64-linux-gnu/libgfortran.so.5 ]; then \
 
 # Add workspace to bashrc
 RUN echo "export LD_LIBRARY_PATH=/ros_ws/lib/libtorch/lib/:\$LD_LIBRARY_PATH" >> /root/.bashrc
-
-RUN echo "export FASTRTPS_DEFAULT_PROFILES_FILE=client.xml" >> /root/.bashrc
 
 
 # The entrypoint script will build, source, and then execute the CMD

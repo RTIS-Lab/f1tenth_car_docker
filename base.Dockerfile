@@ -36,7 +36,8 @@ RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=private \
         ros-humble-joy \
         x11-xserver-utils \
         libasio-dev \
-    && apt-get dist-upgrade -y
+        openssh-server \
+  && apt-get dist-upgrade -y
 
 # Install common python tools.
 # The original files had some of these, consolidating here.
@@ -57,4 +58,5 @@ RUN echo "export VIRTUAL_ENV=/opt/venv" >> ~/.bashrc
 RUN echo "export RCUTILS_COLORIZED_OUTPUT=1"  >> ~/.bashrc
 COPY client_config.xml /client_config.xml
 ENV FASTRTPS_DEFAULT_PROFILES_FILE=/client_config.xml
+RUN echo "export FASTRTPS_DEFAULT_PROFILES_FILE=/client_config.xml" >> /root/.bashrc
 RUN echo 'if [ -f /ros_ws/install/setup.bash ]; then source /ros_ws/install/setup.bash; fi' >> ~/.bashrc

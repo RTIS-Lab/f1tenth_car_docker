@@ -4,6 +4,10 @@ set -e
 # Source ROS 2
 source /opt/ros/humble/setup.bash
 
+# Start SSH server in the background
+echo "--- Starting SSH Server ---"
+/usr/sbin/sshd -p 2223
+
 # Build the workspace
 echo "--- Building workspace at /ros_ws ---"
 cd /ros_ws

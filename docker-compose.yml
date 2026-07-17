@@ -52,7 +52,7 @@ services:
         - /tmp/.X11-unix:/tmp/.X11-unix
         - ${XDG_RUNTIME_DIR}/pipewire-0:/tmp/pipewire-0
         - /sys/fs/cgroup:/sys/fs/cgroup:rw
-        - ./fastdds.xml:/etc/fastdds.xml
+        - ./fastdds.xml:/client_config.xml
     environment:
         # Tell apps inside the container where to find the X11 display
         - XDG_RUNTIME_DIR=/tmp
@@ -86,7 +86,7 @@ services:
       # Bind the X11 socket from the host
       - /tmp/.X11-unix:/tmp/.X11-unix
       - ${XDG_RUNTIME_DIR}/pipewire-0:/tmp/pipewire-0
-      - ./fastdds.xml:/etc/fastdds.xml
+      - ./fastdds.xml:/client_config.xml
     environment:
       # Tell apps inside the container where to find the X11 display
       - XDG_RUNTIME_DIR=/tmp

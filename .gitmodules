@@ -23,3 +23,7 @@
 [submodule "f1tenth_drive/src/rtis_lidar_odom"]
 	path = f1tenth_drive/src/rtis_lidar_odom
 	url = https://github.com/RTIS-Lab/rtis_lidar_odom.git
+[submodule "f1tenth_drive/src/grid_map"]
+	path = f1tenth_drive/src/grid_map
+	url = https://github.com/ANYbotics/grid_map.git
+	branch = humble

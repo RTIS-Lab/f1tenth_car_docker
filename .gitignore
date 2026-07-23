@@ -6,6 +6,14 @@ log/
 **/install/
 **/log/
 
+# Separate CUDA (rl_inference) colcon bases living alongside the Jammy ones
+build.cuda/
+install.cuda/
+log.cuda/
+**/build.cuda/
+**/install.cuda/
+**/log.cuda/
+
 # Python
 __pycache__/
 *.pyc

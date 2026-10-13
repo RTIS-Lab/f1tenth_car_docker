@@ -1,0 +1,222 @@
+# sensor fusion setup
+
+Architecture: one ODOM EKF (vesc + imu) feeding one of two localization
+modes, selected by the `localization_mode` launch arg.
+
+  ODOM EKF (config/fusion.yaml, always running)
+    world_frame: odom
+    inputs: /vesc_odom       (x, vx, vy, vyaw)
+            /sensors/imu/raw (vyaw, ax, ay, az)
+    publishes: /odometry/filtered
+    also publishes odom -> base_link tf ONLY when localization_mode:=amcl
+    (fusion.launch.py overrides publish_tf to true in that mode). In
+    lidar_odom mode publish_tf stays false here; the lidar odom node owns
+    odom -> base_link instead.
+
+The ODOM EKF imu0_config is trimmed to vyaw + ax/ay/az: yaw pose comes
+from the localization layer (lidar scan-match for lidar_odom mode,
+particle filter for amcl mode; was previously duplicated by the IMU
+orientation field), and roll/pitch/vroll/vpitch are discarded by
+two_d_mode anyway so they were noise. The /sensors/imu/raw message is
+now fully REP-103 compliant (angular_velocity in rad/s and
+linear_acceleration in m/s^2) thanks to the vesc_packet.cpp unit fixes
+for both gyro and acceleration.
+
+### Mode lidar_odom (default) -- drift-bounded odometry, no map frame
+
+  rtis_lidar_odom (drive container, started separately)
+    inputs: /odometry/filtered (motion prior for predict())
+            /scan              (lidar scan-match correction)
+    publishes: /lidar_odom         (pose-only; twist left at zero)
+               odom -> base_link tf  (real-world mode, pub_tf:=true)
+  tf chain: odom -> base_link -> vesc -> vesc_imu   (no map frame)
+
+  Why this shape: rtis_lidar_odom ingests a wheel+imu motion prior, so
+  fusing lidar and the same wheels in *one* robot_localization EKF
+  double-counts the wheel odometry. Putting it upstream of lidar_odom
+  means the lidar correction manifests as a drift-bounded odom -> base_link,
+  and /lidar_odom is the recommended pose source for visualization and
+  controllers that look up odom -> base_link. Front-ends that need twist
+  read /odometry/filtered (lidar_odom does not fill twist).
+
+  Use case: when no known map is available, or when you need a high-rate,
+  locally-smooth odom -> base_link that does not jump on AMCL resamples.
+
+### Mode amcl -- known-map global localization
+
+  nav2_map_server       publishes latched /map (nav_msgs/OccupancyGrid)
+  nav2_amcl             subscribes /scan + odom -> base_link tf, publishes
+                        map -> odom as the global correction
+  nav2_lifecycle_manager  activates the above
+  tf chain: map -> odom -> base_link -> vesc -> vesc_imu
+
+  This is textbook REP-105. The ODOM EKF owns odom -> base_link (its
+  publish_tf is overridden to true by fusion.launch.py); AMCL provides
+  map -> odom. Why this succeeds where an earlier 2-EKF design (which fused
+  /lidar_odom in a second robot_localization EKF, since removed) failed:
+  AMCL takes the raw /scan and computes map -> base_link directly via
+  particle filtering against the static map, then publishes map -> odom as
+  the residual. The 2-EKF design instead fused a pre-computed lidar pose
+  whose header.frame_id was odom, requiring it to transform that pose into
+  the map frame using the very map -> odom it was publishing -- a recursive
+  framing bug that left map -> odom at identity forever.
+
+  Trade-off vs lidar_odom mode: odom -> base_link is now pure dead
+  reckoning, so between AMCL updates it accumulates IMU-bias-driven heading
+  drift and wheel-slip-driven position drift. AMCL corrects it on the next
+  scan update; the residual is what map -> odom absorbs. If your tight-loop
+  controller subscribes to /odometry/filtered for pose feedback, expect
+  higher short-term drift than in lidar_odom mode; if it looks up
+  map -> base_link via tf, expect jumpier updates at scan rate.
+
+  Use case: racing on a known track where global localization is needed.
+
+## lidar odom in the drive container
+# Real-world mode: pub_tf:=true so it owns odom -> base_link. Feed it the
+# ODOM EKF output (/odometry/filtered) instead of raw /vesc_odom so the
+# lidar's motion prior benefits from the fused IMU yaw-rate. Only used when
+# localization_mode:=lidar_odom -- in amcl mode you do NOT run this node.
+ros2 run rtis_lidar_odom rtis_lidar_odom_node \
+    --ros-args \
+    --param base_frame:=base_link \
+    --param odom_input_topic:=/odometry/filtered \
+    --param pub_tf:=true
+
+## fusion in the system container
+# Mode lidar_odom (default): ODOM EKF + (separately started) rtis_lidar_odom.
+# No /map frame. ros2 run rtis_lidar_odom ...  (see CLI above).
+ros2 launch f1tenth_stack fusion.launch.py
+
+# Mode amcl: ODOM EKF (publish_tf overridden to true) + nav2_map_server +
+# nav2_amcl + lifecycle_manager. Requires a known map .yaml (paired with its
+# .png/.pgm). The map files in f1tenth_racetracks are not installed by
+# kw_f110_drive's CMakeLists, so pass an absolute filesystem path. Do NOT
+# start rtis_lidar_odom in this mode.
+ros2 launch f1tenth_stack fusion.launch.py \
+    localization_mode:=amcl \
+    map:=/abs/path/to/levine.yaml
+
+# Reuse an externally-provided /map (skip starting nav2_map_server) in amcl mode:
+ros2 launch f1tenth_stack fusion.launch.py \
+    localization_mode:=amcl \
+    use_map_server:=false
+
+# Override either config file if tuning locally:
+ros2 launch f1tenth_stack fusion.launch.py \
+    odom_ekf_config:=/path/to/fusion.yaml \
+    amcl_config:=/path/to/amcl.yaml
+
+# Provide initial pose for amcl mode via RViz (Publish Point -> 2D Pose
+# Estimate on /initialpose) or call global localization:
+ros2 service call /global_localization std_srvs/srv/Empty
+# Or preconfigure a known dock pose in config/amcl.yaml:
+#   set_initial_pose: true
+#   initial_pose.x: ...
+
+
+## checks after launch
+# lidar_odom mode:
+ros2 run tf2_tools view_frames.py     # expect odom -> base_link -> vesc -> vesc_imu  (no map)
+ros2 topic echo /diagnostics         # one robot_localization entry: ekf_filter_node
+ros2 topic hz /odometry/filtered     # ~30 Hz, motion prior for lidar_odom
+ros2 topic hz /lidar_odom            # ~scan rate; matches odom -> base_link tf
+
+# amcl mode:
+ros2 run tf2_tools view_frames.py     # expect map -> odom -> base_link -> vesc -> vesc_imu
+ros2 topic echo /amcl_pose           # PoseWithCovarianceStamped in map frame
+ros2 service call /get_state lifecycle_msgs/srv/GetState
+#       # active: true after lifecycle_manager autostart
+
+
+## mapping (build the .pgm/.yaml that localization later uses)
+# Prereq: bringup_launch.py must be running to provide /scan, /vesc_odom,
+# /sensors/imu/raw, and the base_link -> laser static TF. mapping.launch.py
+# then brings up the ODOM EKF (publish_tf overridden to true; it owns
+# odom -> base_link) plus slam_toolbox online_async in mapping mode, which
+# publishes map -> odom and accumulates the pose graph.
+#
+# Why slam_toolbox benefits from the EKF here: slam_toolbox is pose-graph SLAM;
+# it ingests odom -> base_link as a motion prior and /scan to correct it. The
+# EKF's IMU yaw-rate damping smooths the prior on long straights, and the IMU
+# longitudinal-acceleration constraint reduces the impact of wheel slip
+# during transients. The result is fewer scan-registration failures and
+# cleaner loop closures in the saved map.
+#
+# Drive a slow clean lap of the track in teleop while this runs.
+ros2 launch f1tenth_stack mapping.launch.py
+
+# Serialize the map when the lap is done (writes to the CWD of the shell
+# where you run this, not the launch file's CWD):
+ros2 service call /slam_toolbox/save_map \
+    slam_toolbox/srv/SaveMap "{name: {data: my_track}}"
+# Result: my_track.pgm + my_track.yaml.
+
+# Use the saved map for localization later with amcl mode:
+ros2 launch f1tenth_stack fusion.launch.py \
+    localization_mode:=amcl map:=/abs/path/to/my_track.yaml
+
+# checks after mapping launch:
+ros2 run tf2_tools view_frames.py   # expect map -> odom -> base_link -> laser
+ros2 service call /slam_toolbox/get_state lifecycle_msgs/srv/GetState
+#       # active: true means slam_toolbox is ingesting scans
+
+
+## known issues / future cleanup
+
+### VESC IMU acceleration: now scaled to m/s^2 (fixed in driver)
+The VESC firmware reports linear acceleration in g-units (BMI160 raw).
+vesc_packet.cpp VescPacketImu::acc_x/y/z now multiply the raw value by 9.80665
+before returning, so /sensors/imu/raw linear_acceleration conforms to REP-103
+(m/s^2). Before this fix, at rest the channel read z ~= 1.02 (meaning 1.02 g,
+not 1.02 m/s^2 -- off by ~9.81x). After this fix at rest it should read
+z ~= 9.99 m/s^2 = 1.02 * 9.80665 (the unit-corrected gravity reading).
+
+The unit fix is applied at the acc_x/y/z getters, so both consumers in
+vesc_driver.cpp (the VescImu custom message and the sensor_msgs/Imu
+std_imu_msg) automatically pick it up.
+
+imu0_remove_gravitational_acceleration is `true` in fusion.yaml, so RL strips
+the gravity component from az before fusing -- with the unit fix, the residual
+az at rest (after gravity removal) should be ~0 instead of being the residual
+of a mis-scaled 1.02.
+
+### VESC IMU gyro: now scaled to rad/s (fixed in driver)
+The VESC firmware reports angular velocity in deg/s (BMI160 raw).
+vesc_packet.cpp VescPacketImu::gyr_x/y/z now multiply the raw value by
+(M_PI/180.0) before returning, so /sensors/imu/raw angular_velocity and
+the VescImu.angular_velocity field both conform to REP-103 (rad/s). Before
+this fix the value was published verbatim, so a car cornering at e.g.
+1 rad/s would have appeared as ~57 rad/s in the message -- robot_localization
+largely rejected these updates against the prior imu0_twist_rejection_threshold
+of 0.8 rad/s. With the fix in place, fusion.yaml now bumps that threshold
+to 3.0 rad/s to admit realistic F1Tenth yaw rates.
+
+### VESC IMU roll/pitch/yaw getters return DEGREES (still NOT fixed, by design)
+VescPacketImu::roll/pitch/yaw() return the firmware-supplied Euler angles
+multiplied by `* 180 / M_PI`, i.e. degrees. These feeds go to the custom
+VescImu.ypr Vector3 field only -- vesc_driver.cpp fills the standard
+sensor_msgs/Imu orientation directly from the q0..q3 quaternion, which is
+REP-103 compliant (quaternion is unit-agnostic). Therefore the deg/rad
+mismatch in roll/pitch/yaw does not affect the ODOM EKF, but anyone
+reading VescImu.ypr directly should be aware the units are degrees.
+Changing it would break any such consumer without benefit to the EKF, so
+it is left as-is.
+
+### acceleration_limits in fusion.yaml are inert and probably wrong
+use_control is false, so acceleration_limits / deceleration_limits and their
+gains do nothing. The committed values (1.3 m/s^2 linear accel, 3.4 rad/s^2 yaw
+accel, decel 1.3 / 4.5) are roughly 5-10x too conservative for an F1Tenth
+vehicle (wheelbase ~0.25m). When you do enable use_control, realistic starting
+points are roughly:
+  acceleration_limits:  [5.0, 0, 0, 0, 0, 15.0]
+  deceleration_limits:  [8.0, 0, 0, 0, 0, 20.0]
+  acceleration_gains:   [0.2, 0, 0, 0, 0, 0.3]
+  deceleration_gains:   [0.4, 0, 0, 0, 0, 0.4]
+Measure on the car before trusting them. Also confirm a TwistStamped is
+published on cmd_vel (may need a remap); if unstamped, leave stamped_control
+false.
+
+# other useful commands
+## battery voltage
+`ros2 topic echo /sensors/core --field state.voltage_input`
+- run this from the `system` container, since the vesc messages are defined there

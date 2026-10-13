@@ -1,11 +1,57 @@
-<?xml version="1.0" encoding="UTF-8" ?>
+ <?xml version="1.0" encoding="UTF-8" ?>
  <dds>
      <profiles xmlns="http://www.eprosima.com/XMLSchemas/fastRTPS_Profiles">
-         <participant profile_name="super_client_profile" is_default_profile="true">
+
+         <!-- 1. Define the non-blocking UDP transport -->
+         <transport_descriptors>
+             <transport_descriptor>
+                 <transport_id>non_blocking_udp</transport_id>
+                 <type>UDPv4</type>
+                 <non_blocking_send>true</non_blocking_send>
+             </transport_descriptor>
+             <transport_descriptor>
+                 <transport_id>shm_transport</transport_id>
+                 <type>SHM</type>
+             </transport_descriptor>
+             <transport_descriptor>
+                             <transport_id>tcp_transport</transport_id>
+                             <type>TCPv4</type>
+                             <!-- Bypass the 100 endpoint limit -->
+                             <max_logical_port>65535</max_logical_port>
+                             <logical_port_range>65535</logical_port_range>
+                             <listening_ports>
+                                 <port>0</port>
+                             </listening_ports>
+                         </transport_descriptor>
+         </transport_descriptors>
+
+         <publisher profile_name="default publisher profile" is_default_profile="true">
+             <qos>
+                 <publishMode>
+                     <kind>ASYNCHRONOUS</kind>
+		     <!--<kind>SYNCHRONOUS</kind>-->
+                 </publishMode>
+             </qos>
+             <historyMemoryPolicy>PREALLOCATED_WITH_REALLOC</historyMemoryPolicy>
+         </publisher>
+
+         <subscriber profile_name="default subscriber profile" is_default_profile="true">
+             <historyMemoryPolicy>PREALLOCATED_WITH_REALLOC</historyMemoryPolicy>
+         </subscriber>
+
+         <participant profile_name="client_profile" is_default_profile="true">
              <rtps>
+                 <!-- 2. Bind the non-blocking transport to this participant -->
+                 <userTransports>
+                     <transport_id>non_blocking_udp</transport_id>
+                     <transport_id>tcp_transport</transport_id>
+                     <transport_id>shm_transport</transport_id>
+                 </userTransports>
+                 <useBuiltinTransports>false</useBuiltinTransports>
+
                  <builtin>
                      <discovery_config>
-                         <discoveryProtocol>SUPER_CLIENT</discoveryProtocol>
+                         <discoveryProtocol>CLIENT</discoveryProtocol>
                          <discoveryServersList>
                              <RemoteServer prefix="44.53.00.5f.45.50.52.4f.53.49.4d.41">
                                  <metatrafficUnicastLocatorList>

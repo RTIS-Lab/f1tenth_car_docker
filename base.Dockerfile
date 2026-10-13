@@ -37,6 +37,7 @@ RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=private \
         x11-xserver-utils \
         libasio-dev \
         openssh-server \
+        clangd \
   && apt-get dist-upgrade -y
 
 # Install common python tools.
@@ -53,7 +54,7 @@ RUN --mount=type=cache,target=/root/.cache uv pip install \
 # Source ROS setup automatically in bash
 RUN echo "source /opt/ros/humble/setup.bash" >> ~/.bashrc
 # Add venv and other useful env vars to bashrc for interactive sessions
-RUN echo "export PATH=/opt/venv/bin:$PATH" >> ~/.bashrc
+RUN echo "export PATH=/container_scripts:/opt/venv/bin:$PATH" >> ~/.bashrc
 RUN echo "export VIRTUAL_ENV=/opt/venv" >> ~/.bashrc
 RUN echo "export RCUTILS_COLORIZED_OUTPUT=1"  >> ~/.bashrc
 COPY client_config.xml /client_config.xml

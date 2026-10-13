@@ -1,6 +1,20 @@
 ARG BASE_IMAGE_TAG=latest
 FROM f1tenth-base:${BASE_IMAGE_TAG}
 
+ARG DEBIAN_FRONTEND=noninteractive
+RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=private \
+    --mount=target=/var/cache/apt,type=cache,sharing=private \
+    apt-get update --fix-missing && \
+    apt-get install -y \
+        libboost-all-dev \
+        clang-14 \
+        clangd-14 \
+        libomp-14-dev \
+        ninja-build \
+        ccache \
+    && apt-get -y dist-upgrade
+
+
 WORKDIR /ros_ws
 
 # SSH server setup
@@ -22,6 +36,9 @@ RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=private \
     apt-get update && \
     source /opt/ros/humble/setup.bash && \
     rosdep install -i --from-path src --rosdistro humble -y
+
+RUN update-alternatives --install /usr/bin/clang clang /usr/bin/clang-14 14 && \
+    update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-14 14
 
 # Copy application code
 COPY . .

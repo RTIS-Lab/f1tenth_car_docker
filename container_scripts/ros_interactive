@@ -1,0 +1,6 @@
+#!/bin/bash
+echo "Configuring for interactive mode"
+export FASTRTPS_DEFAULT_PROFILES_FILE=/super_client.xml
+ros2 daemon stop
+ros2 daemon start
+echo "done"

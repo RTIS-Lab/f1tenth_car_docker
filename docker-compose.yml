@@ -1,14 +1,16 @@
 services:
+  # Build this first (it is also the image used by `discovery`):
+  #   docker compose --profile setup build base
   base:
     build:
       context: .
       dockerfile: base.Dockerfile
-    image: f1tenth-base
+    image: f1tenth-base:${BASE_IMAGE_TAG:-slim}
     profiles:
       - setup
 
   discovery:
-    image: f1tenth-base
+    image: f1tenth-base:${BASE_IMAGE_TAG:-slim}
     command: fastdds discovery --server-id 0
     network_mode: host
     ipc: host
@@ -18,66 +20,20 @@ services:
     build:
       context: ./f1tenth_drive
       args:
-        - BASE_IMAGE_TAG=${BASE_IMAGE_TAG:-latest}
-    image: f1tenth-drive:${BASE_IMAGE_TAG:-latest}
+        - BASE_IMAGE_TAG=${BASE_IMAGE_TAG:-slim}
+    image: f1tenth-drive:${BASE_IMAGE_TAG:-slim}
     depends_on:
       - discovery
     volumes:
-        - ./f1tenth_drive:/ros_ws
-        - ./f1tenth_system:/f1tenth_system
-        - /sys/fs/cgroup:/sys/fs/cgroup:rw
-        - ./client_config.xml:/client_config.xml
-        - ./super_client.xml:/super_client.xml
-        - ./container_scripts:/container_scripts
-    environment:
-        - ROS_DISCOVERY_SERVER=localhost:11811
-        - FASTRTPS_DEFAULT_PROFILES_FILE=/client_config.xml
-        - RMW_FASTRTPS_USE_QOS_FROM_XML=1
-        - SKIP_PACKAGES=rtis_f110_rl rtis_cuda
-    privileged: true
-    pid: host
-    cgroup: "host"
-    network_mode: host
-    ipc: host
-
-  # CUDA/GPU inference on the Jetson.
-  #
-  # This is Focal-based (dusty-nv l4t-pytorch) so it can use the host CUDA that
-  # the nvidia container runtime bind-mounts. It shares the SAME source tree as
-  # `drive` (./f1tenth_drive) but builds into build.cuda/install.cuda, and joins
-  # the same FastDDS discovery server, so it interoperates with the Jammy
-  # containers over DDS. Start with just the RL node; add packages to
-  # RL_PACKAGES as you migrate them here.
-  rl_inference:
-    build:
-      context: ./f1tenth_rl_inference
-      args:
-        - L4T_TAG=${L4T_TAG:-r35.3.1}
-    image: f1tenth-rl-inference:${L4T_TAG:-r35.3.1}
-    # Requires the nvidia container runtime (registered in /etc/docker/daemon.json).
-    runtime: nvidia
-    depends_on:
-      - discovery
-    volumes:
-      # Same source as `drive`; separate build/install bases avoid clobbering.
       - ./f1tenth_drive:/ros_ws
       - ./client_config.xml:/client_config.xml
       - ./super_client.xml:/super_client.xml
       - ./container_scripts:/container_scripts
     environment:
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=all
-      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
       - ROS_DISCOVERY_SERVER=localhost:11811
       - FASTRTPS_DEFAULT_PROFILES_FILE=/client_config.xml
       - RMW_FASTRTPS_USE_QOS_FROM_XML=1
-      # Space-separated packages to build/run here. Grow this as you move nodes
-      # onto the GPU / into one process under ros_preempt.
-      - RL_PACKAGES=rtis_f110_rl rtis_cuda
-    # privileged + pid:host mirror `drive`; needed later for ros_preempt's
-    # real-time (SCHED_FIFO) executor experiments.
     privileged: true
-    pid: host
     network_mode: host
     ipc: host
 
@@ -85,8 +41,8 @@ services:
     build:
       context: ./f1tenth_system
       args:
-        - BASE_IMAGE_TAG=${BASE_IMAGE_TAG:-latest}
-    image: f1tenth-system:${BASE_IMAGE_TAG:-latest}
+        - BASE_IMAGE_TAG=${BASE_IMAGE_TAG:-slim}
+    image: f1tenth-system:${BASE_IMAGE_TAG:-slim}
     depends_on:
       - discovery
     volumes:
@@ -102,8 +58,6 @@ services:
       - RMW_FASTRTPS_USE_QOS_FROM_XML=1
     devices:
       - /dev/input:/dev/input:rwm
-    # stdin_open: true
-    # tty: true
     privileged: true
     network_mode: host
     ipc: host

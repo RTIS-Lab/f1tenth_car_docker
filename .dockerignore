@@ -1,0 +1,4 @@
+# Keep the base image build context tiny: base.Dockerfile only uses
+# client_config.xml. Service images use their own subdirectory contexts.
+*
+!client_config.xml

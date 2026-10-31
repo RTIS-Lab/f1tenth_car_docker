@@ -1,4 +1,4 @@
-ARG BASE_IMAGE_TAG=latest
+ARG BASE_IMAGE_TAG=slim
 FROM f1tenth-base:${BASE_IMAGE_TAG}
 
 ARG DEBIAN_FRONTEND=noninteractive

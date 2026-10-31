@@ -30,7 +30,16 @@
                  <publishMode>
                      <kind>ASYNCHRONOUS</kind>
 		     <!--<kind>SYNCHRONOUS</kind>-->
-                 </publishMode>
+	     </publishMode>
+		                 <!-- 3. Force the writer to drop samples instead of waiting -->
+            <reliability>
+                <kind>RELIABLE</kind>
+                <!-- Set max_blocking_time to 0 to completely eliminate blocking -->
+                <max_blocking_time>
+                    <sec>0.1</sec>
+                    <nanosec>0</nanosec>
+                </max_blocking_time>
+            </reliability>
              </qos>
              <historyMemoryPolicy>PREALLOCATED_WITH_REALLOC</historyMemoryPolicy>
          </publisher>
